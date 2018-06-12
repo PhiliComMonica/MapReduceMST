@@ -1,4 +1,5 @@
 import java.io.IOException;
+import java.io.File;
 import java.util.regex.Pattern;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -15,6 +16,7 @@ import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
 
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
@@ -40,27 +42,70 @@ public class MST extends Configured implements Tool {
 	}
 
 	public int run(String[] args) throws Exception {
-		Job job = Job.getInstance(getConf(), "MST");
-		job.setJarByClass(this.getClass());	
-		FileInputFormat.addInputPath(job, new Path(args[0]));
-		FileOutputFormat.setOutputPath(job, new Path(args[1]));
-		job.setMapperClass(MSTMapper.class);
-		job.setReducerClass(MSTReducer.class);
-		job.setOutputKeyClass(LongWritable.class);
-		job.setOutputValueClass(Text.class);
-		if (args[2].equals("max")) {
-			job.setSortComparatorClass(LongWritable.DecreasingComparator.class);
-		}
-		else if (args[2].equals("min")) { }
-		else {
-			System.out.println("Invalid spanning tree type, must be either min or max. Aborting...");
-			System.exit(1);
-		}
-		int completed = job.waitForCompletion(true) ? 0 : 1;
+		boolean done = false;
+		Process p;
 
-		Counters jobCounters = job.getCounters();
-		long totalWeight = jobCounters.findCounter(MSTCounters.totalWeight).getValue();
-		System.out.println("The total weight of the " + args[2] + "ST is " + totalWeight);
+		String input = args[0];
+		String output = args[1];
+
+		File previous;
+		File current;
+
+		int completed = 1;
+
+		while (!done) {
+
+			getConf().set("mapred.textoutputformat.separator", ",");
+
+			Job job = Job.getInstance(getConf(), "MST");
+			job.setJarByClass(this.getClass());	
+			
+			job.setOutputKeyClass(LongWritable.class);
+			job.setOutputValueClass(Text.class);
+			
+			job.setMapperClass(MSTMapper.class);
+			job.setReducerClass(MSTReducer.class);
+			
+			FileInputFormat.addInputPath(job, new Path(input));
+			FileOutputFormat.setOutputPath(job, new Path(output));
+			
+			if (args[2].equals("max")) {
+				job.setSortComparatorClass(LongWritable.DecreasingComparator.class);
+			}
+			else if (args[2].equals("min")) { }
+			else {
+				System.out.println("Invalid spanning tree type, must be either min or max. Aborting...");
+				System.exit(1);
+			}
+			
+			completed = job.waitForCompletion(true) ? 0 : 1;
+
+			p = Runtime.getRuntime().exec("hadoop fs -cat output_*/part* > graph.txt");
+			p.waitFor();
+			p = Runtime.getRuntime().exec("hadoop fs -rm output_*/part* output_*/.part* output_*/_*");
+			p.waitFor();
+			p = Runtime.getRuntime().exec("hadoop fs -cp graph.txt output_*/");
+			p.waitFor();
+			p = Runtime.getRuntime().exec("hadoop fs -mv output_*/ output/");
+			p.waitFor();
+
+			previous = new File("./input/graph.txt");
+			current = new File("./output/graph.txt");
+
+			if (previous.length() == current.length()) {
+				done = true;
+				Counters jobCounters = job.getCounters();
+				long totalWeight = jobCounters.findCounter(MSTCounters.totalWeight).getValue();
+				System.out.println("The total weight of the " + args[2] + "ST is " + totalWeight);
+			}
+			else {
+				p = Runtime.getRuntime().exec("hadoop fs -rm -r input/");
+				p.waitFor();
+				p = Runtime.getRuntime().exec("hadoop fs -mv output/ input/");
+				p.waitFor();
+			}
+
+		}
 		return completed;
 	}
 
