@@ -25,3 +25,6 @@ rmax:
 	rm *.class
 	rm *.jar
 	rm -r output_max/
+
+clean:
+	rm -r *.class *.jar output_max/ output_min/
