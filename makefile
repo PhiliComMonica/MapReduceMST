@@ -27,4 +27,5 @@ rmax:
 	rm -r output_max/
 
 clean:
+	hadoop fs -rm -r ~/input ~/output_min/ ~/output_max/
 	rm -r *.class *.jar output_max/ output_min/
